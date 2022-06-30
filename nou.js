@@ -1,4 +1,4 @@
-const Nou = (function() {
+var Nou = (function() {
 
 function fillArray(length, value = 0) {
     const arr = new Array(length);
@@ -63,7 +63,7 @@ const Vector = (function() {
 
 const Dense = (function() {
     const proto = {
-        type: "dense",
+        type: "Dense",
         forward() {
             const out = this.out;
             const inValues = this.in.values;
@@ -90,7 +90,7 @@ const Dense = (function() {
     };
     function Dense(properties) {
         const { neurons } = properties;
-        const layer = addLayer(this, proto);
+        const layer = addLayer(this, proto, properties);
         layer.outShape = neurons;
         layer.out = Vector(layer.outShape, 0);
         layer.weights = Array(findVolume(neurons));
@@ -105,7 +105,7 @@ const Dense = (function() {
 
 const Convolution = (function() {
     const proto = {
-        type: "convolution",
+        type: "Convolution",
         forward() {
             const dimensionality = this.kernelSize.length;
             const out = this.out;
@@ -252,7 +252,7 @@ const Convolution = (function() {
         get parameters() { return [...this.filters, this.biases]; },
     };
     function Convolution(properties) {
-        const layer = addLayer(this, proto);
+        const layer = addLayer(this, proto, properties);
         const dimensionality = layer.inShape.length - 1;
         const { filters = 1, kernelSize = Array(dimensionality).fill(1), stride = Array(dimensionality).fill(1), dilation = Array(dimensionality).fill(1), padding = Array(dimensionality).fill(0) } = properties;
         layer.kernelSize = kernelSize;
@@ -280,7 +280,7 @@ const Convolution = (function() {
 
 const RelU = (function() {
     const proto = {
-        type: "relu",
+        type: "RelU",
         forward() {
             const input = this.in.values, out = this.out.values;
             for(let i = 0; i < out.length; i += 1) {
@@ -299,7 +299,7 @@ const RelU = (function() {
     };
     function RelU(properties) {
         const {  } = properties;
-        const layer = addLayer(this, proto);
+        const layer = addLayer(this, proto, properties);
         layer.outShape = layer.inShape;
         layer.out = Vector(layer.outShape, 0);
         return layer;
@@ -309,7 +309,7 @@ const RelU = (function() {
 
 const LeakyRelU = (function() {
     const proto = {
-        type: "leaky relu",
+        type: "LeakyRelU",
         forward() {
             const input = this.in.values, out = this.out.values;
             for(let i = 0; i < out.length; i += 1) {
@@ -328,7 +328,7 @@ const LeakyRelU = (function() {
     };
     function LeakyRelU(properties) {
         const { slope = 0.01 } = properties;
-        const layer = addLayer(this, proto);
+        const layer = addLayer(this, proto, properties);
         layer.outShape = layer.inShape;
         layer.out = Vector(layer.outShape, 0);
         layer.slope = slope;
@@ -339,7 +339,7 @@ const LeakyRelU = (function() {
 
 const Tanh = (function() {
     const proto = {
-        type: "tanh",
+        type: "Tanh",
         forward() {
             const input = this.in.values, out = this.out.values;
             for(let i = 0; i < out.length; i += 1) {
@@ -358,7 +358,7 @@ const Tanh = (function() {
     };
     function Tanh(properties) {
         const { } = properties;
-        const layer = addLayer(this, proto);
+        const layer = addLayer(this, proto, properties);
         layer.outShape = layer.inShape;
         layer.out = Vector(layer.outShape, 0);
         return layer;
@@ -368,7 +368,7 @@ const Tanh = (function() {
 
 const Sigmoid = (function() {
     const proto = {
-        type: "sigmoid",
+        type: "Sigmoid",
         forward() {
             const input = this.in.values, out = this.out.values;
             for(let i = 0; i < out.length; i += 1) {
@@ -387,7 +387,7 @@ const Sigmoid = (function() {
     };
     function Sigmoid(properties) {
         const { } = properties;
-        const layer = addLayer(this, proto);
+        const layer = addLayer(this, proto, properties);
         layer.outShape = layer.inShape;
         layer.out = Vector(layer.outShape, 0);
         return layer;
@@ -397,7 +397,7 @@ const Sigmoid = (function() {
 
 const Softmax = (function() {
     const proto = {
-        type: "softmax",
+        type: "Softmax",
         forward() {
             const input = this.in.values, out = this.out.values;
             let a = 0;
@@ -422,7 +422,7 @@ const Softmax = (function() {
     };
     function Softmax(properties) {
         const { } = properties;
-        const layer = addLayer(this, proto);
+        const layer = addLayer(this, proto, properties);
         layer.outShape = layer.inShape;
         layer.out = Vector(layer.outShape, 0);
         return layer;
@@ -432,7 +432,7 @@ const Softmax = (function() {
 
 const GlobalAveragePooling = (function() {
     const proto = {
-        type: "global average pooling",
+        type: "GlobalAveragePooling",
         forward() {
             const out = this.out, input = this.in;
             const inputArea = input.values.length / input.shape[input.shape.length - 1], inverseInputArea = 1 / inputArea;
@@ -465,7 +465,7 @@ const GlobalAveragePooling = (function() {
         },
     };
     function GlobalAveragePooling(properties) {
-        const layer = addLayer(this, proto);
+        const layer = addLayer(this, proto, properties);
         const {  } = properties;
         layer.outShape = [layer.inShape[layer.inShape.length - 1]];
         layer.out = Vector(layer.outShape, 0);
@@ -476,7 +476,7 @@ const GlobalAveragePooling = (function() {
 
 const MaxPooling = (function() {
     const proto = {
-        type: "max pooling",
+        type: "MaxPooling",
         forward() {
             const dimensionality = this.kernelSize.length;
             const out = this.out;
@@ -618,7 +618,7 @@ const MaxPooling = (function() {
         },
     };
     function MaxPooling(properties) {
-        const layer = addLayer(this, proto);
+        const layer = addLayer(this, proto, properties);
         const dimensionality = layer.inShape.length - 1;
         const { kernelSize = Array(dimensionality).fill(1), stride = Array(dimensionality).fill(1), dilation = Array(dimensionality).fill(1), padding = Array(dimensionality).fill(0) } = properties;
         layer.kernelSize = kernelSize;
@@ -641,7 +641,7 @@ const MaxPooling = (function() {
 
 const AveragePooling = (function() {
     const proto = {
-        type: "average pooling",
+        type: "AveragePooling",
         forward() {
             const dimensionality = this.kernelSize.length;
             const out = this.out;
@@ -776,7 +776,7 @@ const AveragePooling = (function() {
         },
     };
     function AveragePooling(properties) {
-        const layer = addLayer(this, proto);
+        const layer = addLayer(this, proto, properties);
         const dimensionality = layer.inShape.length - 1;
         const { kernelSize = Array(dimensionality).fill(1), stride = Array(dimensionality).fill(1), dilation = Array(dimensionality).fill(1), padding = Array(dimensionality).fill(0) } = properties;
         layer.kernelSize = kernelSize;
@@ -798,19 +798,26 @@ const AveragePooling = (function() {
     return AveragePooling;
 })();
 
-function addLayer(obj, proto) {
+function addLayer(obj, proto, properties) {
     const layer = Object.create(proto);
     layer.inShape = obj.layers[obj.depth - 1].outShape;
+    layer.properties = properties;
     obj.depth += 1;
     obj.layers.push(layer);
     return layer;
 }
 
 const costFunctions = {
-    "quadratic": (target, prediction) => 0.5 * (prediction - target) * (prediction - target),
+    "quadratic": (target, prediction) => {
+        let c = 0;
+        for(let i = 0; i < target.length; i += 1) {
+            c += 0.5 * (prediction[i] - target[i]) * (prediction[i] - target[i]);
+        }
+        return c;
+    },
 };
 const dCostFunctions = {
-    "quadratic": (target, prediction) => (prediction - target),
+    "quadratic": (target, prediction) => target.map((e, i) => (prediction[i] - e)),
 }
 const inputProto = {
     type: "input",
@@ -828,19 +835,14 @@ const networkProto = {
         }
         return input;
     },
-    cost(target) {
-        target = target.values;
-        const layer = this.layers[this.depth - 1].out.values;
-        let cost = 0;
-        for(let i = 0; i < layer.length; i += 1) {
-            cost += this.costFunction(target[i], layer[i]);
-        }
-        return cost;
+    cost(target, layer = this.depth - 1) {
+        return this.costFunction(target.values, this.layers[layer].out.values);
     },
     backward(target, inputLayer = 0, outputLayer = this.depth - 1) {
         const out = this.layers[outputLayer].out;
+        const dCost = this.dCostFunction(target.values, out.values); // dCost/dActivation
         for(let i = 0; i < out.values.length; i += 1) {
-            out.gradient[i] = this.dCostFunction(target.values[i], out.values[i]); // dCost/dActivation
+            out.gradient[i] = dCost[i];
         }
         for(let i = outputLayer; i >= inputLayer; i -= 1) {
             const parameters = this.layers[i].parameters;
@@ -889,6 +891,32 @@ const networkProto = {
             }
         }
     },
+    exportParameters() {
+        const p = [];
+        for(const layer of this.layers) {
+            const parameters = layer.parameters;
+            if(!parameters) { continue; }
+            for(const parameter of parameters) {
+                for(const value of parameter.values) {
+                    p.push(value);
+                }
+            }
+        }
+        return p;
+    },
+    importParameters(p) {
+        let j = 0;
+        for(const layer of this.layers) {
+            const parameters = layer.parameters;
+            if(!parameters) { continue; }
+            for(const parameter of parameters) {
+                for(let i = 0; i < parameter.values.length; i += 1) {
+                    parameter.values[i] = p[j];
+                    j += 1;
+                }
+            }
+        }
+    },
 
     Dense, RelU, LeakyRelU, Tanh, Sigmoid, Softmax, Convolution, GlobalAveragePooling, MaxPooling, AveragePooling,
 };
@@ -899,8 +927,8 @@ function Network(properties) {
     input.inShape = inputShape;
     input.outShape = inputShape;
     network.layers.push(input);
-    network.costFunction = (typeof costFunction === Function) ? costFunction : costFunctions[costFunction] || ((a, b) => (a - b) * (a - b));
-    network.dCostFunction = (typeof costFunction === Function) ? dCostFunction : dCostFunctions[costFunction] || ((a, b) => 2 * (a - b));
+    network.costFunction = (typeof costFunction === "function") ? costFunction : costFunctions[costFunction] || costFunctions.quadratic;
+    network.dCostFunction = (typeof costFunction === "function") ? dCostFunction : dCostFunctions[costFunction] || dCostFunctions.quadratic;
     return network;
 }
 
