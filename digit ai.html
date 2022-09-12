@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8">
+        <title>digit classification ai</title>
+        <style>
+            canvas {
+                border: 1px solid black;
+            }
+            body {
+                margin: 10px;
+                padding: 0px;
+            }
+        </style>
+    </head>
+    <body>
+        left click and drag in the top left square to draw, right click and drag to erase<br><br>
+        <canvas id="canvas" width="580" height="285" oncontextmenu="return false"></canvas>
+    </body>
+    <script src="https://cdn.jsdelivr.net/gh/JentGent/nou.js/nou.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/JentGent/nou.js/mnist%20digits/network%20parameters.js"></script>
+    <script>
+
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+let mouseX = 0, mouseY = 0;
+let press = [];
+canvas.onmousemove = function(e) {
+    const rect = e.target.getBoundingClientRect();
+    mouseX = e.clientX - rect.left;
+    mouseY = e.clientY - rect.top;
+};
+canvas.onmousedown = function(e) {
+    press[e.button] = true;
+};
+canvas.onmouseup = function(e) {
+    press[e.button] = false;
+};
+
+const model = Nou.Network({ inputShape: [28, 28, 1], costFunction: "quadratic" });
+model.Convolution({ filters: 10, kernelSize: [3, 3], stride: [1, 1] });
+model.MaxPooling({ kernelSize: [2, 2], stride: [2, 2] });
+model.RelU({});
+model.Dense({ neurons: [10] });
+model.RelU({});
+model.Dense({ neurons: [10] });
+model.Softmax({});
+model.importParameters(parameters);
+
+canvas.onmouseup = function(e) {
+    press[e.button] = false;
+
+    // // Numerically check gradient
+    // model.forward(drawing);
+    // const l = Nou.Vector([10], [0, 0, 1, 0, 0, 0, 0, 0, 0, 0]);
+    // const c1 = model.cost(l);
+    // model.backward(l);
+    // for(let k = 0; k < model.layers.length; k += 1) {
+    //     const c = model.layers[k];
+    //     // console.log(k, c.in.gradient);
+    //     // console.log(k, c.out.values);
+    //     const t = c.parameters;
+    //     if(!t) { continue; }
+    //     for(let i = 0; i < t.length; i += 1) {
+    //         for(let j = 0; j < t[i].values.length; j += 1) {
+    //             t[i].values[j] += 0.00000001;
+    //             model.forward(drawing);
+    //             t[i].values[j] -= 0.00000001;
+    //             const c2 = (model.cost(l) - c1) / 0.00000001, g = t[i].gradient[j];
+    //             if((c2 - g) * (c2 - g) < 0.01 * 0.01) { continue; }
+    //             console.log((c2 - g) + ": " + c2 + "; " + g);
+    //             console.log(k, i, j);
+    //         }
+    //     }
+    // }
+};
+
+const DRAWING_PIXEL_SIZE = 4, ACTIVATION_PIXEL_SIZE = 3, OFFSET = 28 * DRAWING_PIXEL_SIZE + 15;
+const drawing = Nou.Vector([28, 28, 1], -1);
+const rect = ctx.fillRect.bind(ctx);
+function draw() {
+    ctx.clearRect(0, 0, 1000, 800);
+    let prediction;
+    for(let i = 0; i < 28; i += 1) {
+        for(let j = 0; j < 28; j += 1) {
+            let x = i * DRAWING_PIXEL_SIZE, y = j * DRAWING_PIXEL_SIZE;
+            const index = drawing.index([i, j, 0]);
+            const value = (drawing.values[index] + 1) * 255 / 2;
+            ctx.fillStyle = `rgb(${value}, ${value}, ${value})`;
+            rect(x, y, DRAWING_PIXEL_SIZE, DRAWING_PIXEL_SIZE);
+            const sqDist = (mouseX - x - DRAWING_PIXEL_SIZE / 2) ** 2 + (mouseY - y - DRAWING_PIXEL_SIZE) ** 2;
+            if(press[0] && sqDist < DRAWING_PIXEL_SIZE * DRAWING_PIXEL_SIZE * 1) { drawing.values[index] = 1; }
+            else if(press[2] && sqDist < DRAWING_PIXEL_SIZE * DRAWING_PIXEL_SIZE * 9) { drawing.values[index] = -1; }
+            drawing.values[index] = Math.max(-1, Math.min(1, drawing.values[index]));
+        }
+    }
+    prediction = model.forward(drawing).values;
+    let top = 0;
+    for(let i = 1; i < model.layers.length; i += 1) {
+        const layer = model.layers[i];
+        let x = 0, y = 0, z = 0;
+        let m = Infinity, M = -Infinity;
+        for(const j of layer.out.values) {
+            if(j < m) { m = j; }
+            if(j > M) { M = j; }
+        }
+        for(let j = 0; j < layer.out.values.length; j += 1) {
+            const value = (layer.out.values[j] - m) / (M - m) * 255;
+            ctx.fillStyle = `rgb(${value}, ${value}, ${value})`;
+            rect(x * ACTIVATION_PIXEL_SIZE + OFFSET + z * (2 + layer.outShape[0] * ACTIVATION_PIXEL_SIZE), y * ACTIVATION_PIXEL_SIZE + top, ACTIVATION_PIXEL_SIZE, ACTIVATION_PIXEL_SIZE);
+            x += 1;
+            if(x >= layer.outShape[0]) {
+                x = 0;
+                y += 1;
+                if(layer.outShape[1]) {
+                    if(y >= layer.outShape[1] && j < layer.out.values.length - 1) {
+                        if(x * ACTIVATION_PIXEL_SIZE + OFFSET + (z + 2) * (2 + layer.outShape[0] * ACTIVATION_PIXEL_SIZE) > 580) {
+                            x = y = z = 0;
+                            top += (layer.outShape[1] || 1) * ACTIVATION_PIXEL_SIZE;
+                            top += 1;
+                        }
+                    }
+                }
+            }
+            if(layer.outShape[1]) {
+                if(y >= layer.outShape[1]) {
+                    y = 0;
+                    z += 1;
+                }
+            }
+        }
+        top += (layer.outShape[1] || 1) * ACTIVATION_PIXEL_SIZE;
+        top += 5;
+    }
+    ctx.fillStyle = "black";
+    ctx.font = "13px comic sans ms";
+    ctx.textAlign = "left";
+    ctx.fillText(`drawing predictions:`, 0, 28 * DRAWING_PIXEL_SIZE + 13);
+    const predictionOrder = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].sort((a, b) => prediction[b] - prediction[a]);
+    for(let i = 0; i < prediction.length; i += 1) {
+        ctx.fillText(`${predictionOrder[i]}: ${(prediction[predictionOrder[i]] * 100) | 0}%`, 0, 28 * DRAWING_PIXEL_SIZE + 13 + 13 + i * 13);
+    }
+    setTimeout(draw);
+}
+draw();
+    </script>
+</html>
