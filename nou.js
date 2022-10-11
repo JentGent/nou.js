@@ -79,11 +79,13 @@ const Dense = (function() {
             const input = this.in, out = this.out;
             for(let i = 0; i < out.values.length; i += 1) {
                 const weights = this.weights[i], derivative = out.gradient[i]; // dCost/dActivation
-                for(let j = 0; j < input.values.length; j += 1) {
-                    weights.gradient[j] += input.values[j] * derivative; // dCost/dWeight = dActivation/dWeight * dCost/dActivation
-                    input.gradient[j] += weights.values[j] * derivative; // dCost/dInput = dActivation/dInput * dCost/dActivation
+                if(derivative) {
+                    for(let j = 0; j < input.values.length; j += 1) {
+                        weights.gradient[j] += input.values[j] * derivative; // dCost/dWeight = dActivation/dWeight * dCost/dActivation
+                        input.gradient[j] += weights.values[j] * derivative; // dCost/dInput = dActivation/dInput * dCost/dActivation
+                    }
+                    this.biases.gradient[i] += derivative; // dCost/dBias = dActivation/dBias * dCost/dActivation
                 }
-                this.biases.gradient[i] += derivative; // dCost/dBias = dActivation/dBias * dCost/dActivation
             }
         },
         get parameters() { return [...this.weights, this.biases]; },
@@ -92,7 +94,7 @@ const Dense = (function() {
         const { neurons } = properties;
         const layer = addLayer(this, proto, properties);
         layer.outShape = neurons;
-        layer.out = Vector(layer.outShape, 0);
+        fillInstances(layer);
         layer.weights = Array(findVolume(neurons));
         for(let i = 0; i < layer.weights.length; i += 1) {
             layer.weights[i] = Vector(layer.inShape);
@@ -202,37 +204,39 @@ const Convolution = (function() {
             // Feature maps
             for(let i = 0; i < out.values.length; i += 1) {
                 const derivative = this.out.gradient[i]; // dCost/dActivation
-                const filterIndex = outPosition[dimensionality];
-                const filter = this.filters[filterIndex];
-                const filterPixel = [];
-                let inIndex = 0;
-                for(let j = dimensionality - 1; j >= 0; j -= 1) {
-                    filterPixel[j] = 0;
-                    inIndex = filterPosition[j] + this.inShape[j] * inIndex;
-                }
-                let startIndex = inIndex;
-                for(let j = 0; j < filterVolume; j += 1) {
-                    for(let k = 0; k < this.inShape[dimensionality]; k += 1) {
-                        // Input pixel with depth k and lth coordinate (filterPosition[l] + filterPixel[l] * dilation[l])
-                        const index = inIndex + k * inDepthMultiplier;
-                        filter.gradient[j + k * filterDepthMultiplier] += this.in.values[index] * derivative; // dCost/dFilter = dActivation/dFilter * dCost/dActivation
-                        this.in.gradient[index] += filter.values[j + k * filterDepthMultiplier] * derivative; // dCost/dInput = dActivation/dInput * dCost/dActivation
+                if(derivative) {
+                    const filterIndex = outPosition[dimensionality];
+                    const filter = this.filters[filterIndex];
+                    const filterPixel = [];
+                    let inIndex = 0;
+                    for(let j = dimensionality - 1; j >= 0; j -= 1) {
+                        filterPixel[j] = 0;
+                        inIndex = filterPosition[j] + this.inShape[j] * inIndex;
                     }
+                    let startIndex = inIndex;
+                    for(let j = 0; j < filterVolume; j += 1) {
+                        for(let k = 0; k < this.inShape[dimensionality]; k += 1) {
+                            // Input pixel with depth k and lth coordinate (filterPosition[l] + filterPixel[l] * dilation[l])
+                            const index = inIndex + k * inDepthMultiplier;
+                            filter.gradient[j + k * filterDepthMultiplier] += this.in.values[index] * derivative; // dCost/dFilter = dActivation/dFilter * dCost/dActivation
+                            this.in.gradient[index] += filter.values[j + k * filterDepthMultiplier] * derivative; // dCost/dInput = dActivation/dInput * dCost/dActivation
+                        }
 
-                    // Increment pixel of filter
-                    filterPixel[0] += 1;
-                    inIndex += this.dilation[0];
-                    for(let k = 0; k < dimensionality - 1; k += 1) {
-                        if(filterPixel[k] >= this.kernelSize[k]) {
-                            for(let m = 0; m <= k; m += 1) {
-                                filterPixel[m] = 0;
+                        // Increment pixel of filter
+                        filterPixel[0] += 1;
+                        inIndex += this.dilation[0];
+                        for(let k = 0; k < dimensionality - 1; k += 1) {
+                            if(filterPixel[k] >= this.kernelSize[k]) {
+                                for(let m = 0; m <= k; m += 1) {
+                                    filterPixel[m] = 0;
+                                }
+                                startIndex = inIndex = startIndex + inputDimensionIncrements[k];
+                                filterPixel[k + 1] += 1;
                             }
-                            startIndex = inIndex = startIndex + inputDimensionIncrements[k];
-                            filterPixel[k + 1] += 1;
                         }
                     }
+                    this.biases.gradient[filterIndex] += derivative; // dCost/dBias = dActivation/dBias * dCost/dActivation
                 }
-                this.biases.gradient[filterIndex] += derivative; // dCost/dBias = dActivation/dBias * dCost/dActivation
 
                 // Move filter
                 filterPosition[0] += this.stride[0];
@@ -272,10 +276,25 @@ const Convolution = (function() {
         }
         out[out.length] = filters;
         layer.outShape = out;
-        layer.out = Vector(layer.outShape, 0);
+        fillInstances(layer);
         return layer;
     }
     return Convolution;
+})();
+
+const Custom = (function() {
+    const proto = {
+        type: "Custom",
+    };
+    function Custom(properties) {
+        const { outShape = layer.inShape, forward, backward } = properties;
+        const layer = addLayer(this, proto, properties);
+        layer.outShape = outShape;
+        layer.forward = forward;
+        layer.backward = backward;
+        fillInstances(layer);
+    }
+    return Custom;
 })();
 
 const RelU = (function() {
@@ -301,7 +320,7 @@ const RelU = (function() {
         const {  } = properties;
         const layer = addLayer(this, proto, properties);
         layer.outShape = layer.inShape;
-        layer.out = Vector(layer.outShape, 0);
+        fillInstances(layer);
         return layer;
     }
     return RelU;
@@ -330,7 +349,7 @@ const LeakyRelU = (function() {
         const { slope = 0.01 } = properties;
         const layer = addLayer(this, proto, properties);
         layer.outShape = layer.inShape;
-        layer.out = Vector(layer.outShape, 0);
+        fillInstances(layer);
         layer.slope = slope;
         return layer;
     }
@@ -360,7 +379,7 @@ const Tanh = (function() {
         const { } = properties;
         const layer = addLayer(this, proto, properties);
         layer.outShape = layer.inShape;
-        layer.out = Vector(layer.outShape, 0);
+        fillInstances(layer);
         return layer;
     }
     return Tanh;
@@ -389,7 +408,7 @@ const Sigmoid = (function() {
         const { } = properties;
         const layer = addLayer(this, proto, properties);
         layer.outShape = layer.inShape;
-        layer.out = Vector(layer.outShape, 0);
+        fillInstances(layer);
         return layer;
     }
     return Sigmoid;
@@ -424,7 +443,7 @@ const Softmax = (function() {
         const { } = properties;
         const layer = addLayer(this, proto, properties);
         layer.outShape = layer.inShape;
-        layer.out = Vector(layer.outShape, 0);
+        fillInstances(layer);
         return layer;
     }
     return Softmax;
@@ -458,8 +477,10 @@ const GlobalAveragePooling = (function() {
             }
             for(let i = 0; i < out.values.length; i += 1) {
                 const derivative = out.gradient[i]; // dCost/dActivation
-                for(let j = i * inputSliceIncrement; j < inputArea + i * inputSliceIncrement; j += 1) {
-                    input.gradient[j] += inverseInputArea * derivative; // dCost/dInput = dActivation/dInput * dCost/dActivation
+                if(derivative) {
+                    for(let j = i * inputSliceIncrement; j < inputArea + i * inputSliceIncrement; j += 1) {
+                        input.gradient[j] += inverseInputArea * derivative; // dCost/dInput = dActivation/dInput * dCost/dActivation
+                    }
                 }
             }
         },
@@ -468,7 +489,7 @@ const GlobalAveragePooling = (function() {
         const layer = addLayer(this, proto, properties);
         const {  } = properties;
         layer.outShape = [layer.inShape[layer.inShape.length - 1]];
-        layer.out = Vector(layer.outShape, 0);
+        fillInstances(layer);
         return layer;
     }
     return GlobalAveragePooling;
@@ -569,37 +590,39 @@ const MaxPooling = (function() {
             // Feature maps
             for(let i = 0; i < out.values.length; i += 1) {
                 const derivative = this.out.gradient[i]; // dCost/dActivation
-                const filterPixel = [];
-                let inIndex = 0;
-                for(let j = dimensionality - 1; j >= 0; j -= 1) {
-                    filterPixel[j] = 0;
-                    inIndex = filterPosition[j] + this.inShape[j] * inIndex;
-                }
-                let startIndex = inIndex;
-                let maxIndex = 0, maxValue = -Infinity;
-                for(let j = 0; j < filterVolume; j += 1) {
-                    // Input pixel with depth (filter #) and lth coordinate (filterPosition[l] + filterPixel[l] * dilation[l])
-                    const index = inIndex + outPosition[dimensionality] * inDepthMultiplier;
-                    const value = this.in.values[index] || 0;
-                    if(value > maxValue) {
-                        maxIndex = index;
-                        maxValue = value;
+                if(derivative) {
+                    const filterPixel = [];
+                    let inIndex = 0;
+                    for(let j = dimensionality - 1; j >= 0; j -= 1) {
+                        filterPixel[j] = 0;
+                        inIndex = filterPosition[j] + this.inShape[j] * inIndex;
                     }
+                    let startIndex = inIndex;
+                    let maxIndex = 0, maxValue = -Infinity;
+                    for(let j = 0; j < filterVolume; j += 1) {
+                        // Input pixel with depth (filter #) and lth coordinate (filterPosition[l] + filterPixel[l] * dilation[l])
+                        const index = inIndex + outPosition[dimensionality] * inDepthMultiplier;
+                        const value = this.in.values[index] || 0;
+                        if(value > maxValue) {
+                            maxIndex = index;
+                            maxValue = value;
+                        }
 
-                    // Increment pixel of filter
-                    filterPixel[0] += 1;
-                    inIndex += this.dilation[0];
-                    for(let k = 0; k < dimensionality - 1; k += 1) {
-                        if(filterPixel[k] >= this.kernelSize[k]) {
-                            for(let m = 0; m <= k; m += 1) {
-                                filterPixel[m] = 0;
+                        // Increment pixel of filter
+                        filterPixel[0] += 1;
+                        inIndex += this.dilation[0];
+                        for(let k = 0; k < dimensionality - 1; k += 1) {
+                            if(filterPixel[k] >= this.kernelSize[k]) {
+                                for(let m = 0; m <= k; m += 1) {
+                                    filterPixel[m] = 0;
+                                }
+                                startIndex = inIndex = startIndex + inputDimensionIncrements[k];
+                                filterPixel[k + 1] += 1;
                             }
-                            startIndex = inIndex = startIndex + inputDimensionIncrements[k];
-                            filterPixel[k + 1] += 1;
                         }
                     }
+                    this.in.gradient[maxIndex] += derivative; // dCost/dInput = dActivation/dInput * dCost/dActivation
                 }
-                this.in.gradient[maxIndex] += derivative; // dCost/dInput = dActivation/dInput * dCost/dActivation
 
                 // Move filter
                 filterPosition[0] += this.stride[0];
@@ -633,7 +656,7 @@ const MaxPooling = (function() {
         }
         out[out.length] = layer.inShape[dimensionality];
         layer.outShape = out;
-        layer.out = Vector(layer.outShape, 0);
+        fillInstances(layer);
         return layer;
     }
     return MaxPooling;
@@ -733,28 +756,30 @@ const AveragePooling = (function() {
             // Feature maps
             for(let i = 0; i < out.values.length; i += 1) {
                 const derivative = this.out.gradient[i]; // dCost/dActivation
-                const filterPixel = [];
-                let inIndex = 0;
-                for(let j = dimensionality - 1; j >= 0; j -= 1) {
-                    filterPixel[j] = 0;
-                    inIndex = filterPosition[j] + this.inShape[j] * inIndex;
-                }
-                let startIndex = inIndex;
-                for(let j = 0; j < filterVolume; j += 1) {
-                    // Input pixel with depth (filter #) and lth coordinate (filterPosition[l] + filterPixel[l] * dilation[l])
-                    const index = inIndex + outPosition[dimensionality] * inDepthMultiplier;
-                    this.in.gradient[index] += this.invSum * derivative; // dCost/dInput = dActivation/dInput * dCost/dActivation
+                if(derivative) {
+                    const filterPixel = [];
+                    let inIndex = 0;
+                    for(let j = dimensionality - 1; j >= 0; j -= 1) {
+                        filterPixel[j] = 0;
+                        inIndex = filterPosition[j] + this.inShape[j] * inIndex;
+                    }
+                    let startIndex = inIndex;
+                    for(let j = 0; j < filterVolume; j += 1) {
+                        // Input pixel with depth (filter #) and lth coordinate (filterPosition[l] + filterPixel[l] * dilation[l])
+                        const index = inIndex + outPosition[dimensionality] * inDepthMultiplier;
+                        this.in.gradient[index] += this.invSum * derivative; // dCost/dInput = dActivation/dInput * dCost/dActivation
 
-                    // Increment pixel of filter
-                    filterPixel[0] += 1;
-                    inIndex += this.dilation[0];
-                    for(let k = 0; k < dimensionality - 1; k += 1) {
-                        if(filterPixel[k] >= this.kernelSize[k]) {
-                            for(let m = 0; m <= k; m += 1) {
-                                filterPixel[m] = 0;
+                        // Increment pixel of filter
+                        filterPixel[0] += 1;
+                        inIndex += this.dilation[0];
+                        for(let k = 0; k < dimensionality - 1; k += 1) {
+                            if(filterPixel[k] >= this.kernelSize[k]) {
+                                for(let m = 0; m <= k; m += 1) {
+                                    filterPixel[m] = 0;
+                                }
+                                startIndex = inIndex = startIndex + inputDimensionIncrements[k];
+                                filterPixel[k + 1] += 1;
                             }
-                            startIndex = inIndex = startIndex + inputDimensionIncrements[k];
-                            filterPixel[k + 1] += 1;
                         }
                     }
                 }
@@ -792,16 +817,23 @@ const AveragePooling = (function() {
         }
         out[out.length] = layer.inShape[dimensionality];
         layer.outShape = out;
-        layer.out = Vector(layer.outShape, 0);
+        fillInstances(layer);
         return layer;
     }
     return AveragePooling;
 })();
 
+function fillInstances(layer) {
+    for(let i = 0; i < layer.instances.length; i += 1) {
+        layer.instances[i] = Vector(layer.outShape, 0);
+    }
+    layer.out = layer.instances[0];
+}
 function addLayer(obj, proto, properties) {
     const layer = Object.create(proto);
     layer.inShape = obj.layers[obj.depth - 1].outShape;
     layer.properties = properties;
+    layer.instances = new Array(obj.instances);
     obj.depth += 1;
     obj.layers.push(layer);
     return layer;
@@ -821,13 +853,28 @@ const dCostFunctions = {
 }
 const inputProto = {
     type: "input",
-    forward() { return this.out = this.in; },
+    forward() {
+        for(let i = 0; i < this.out.values.length; i += 1) {
+            this.out.values[i] = this.in.values[i];
+        }
+        return this.out;
+    },
     backward() {},
 };
 const networkProto = {
     layers: [],
     depth: 1,
 
+    switchInstance(instance = 0) {
+        for(let i = 0; i < this.layers.length; i += 1) {
+            const layer = this.layers[i];
+            layer.out = layer.instances[instance];
+            if(i < this.layers.length - 1) {
+                this.layers[i + 1].in = layer.out;
+            }
+        }
+        this.instance = instance;
+    },
     forward(input, inputLayer = 0, outputLayer = this.depth - 1) {
         for(let i = inputLayer; i < outputLayer + 1; i += 1) {
             this.layers[i].in = input;
@@ -836,6 +883,9 @@ const networkProto = {
         return input;
     },
     cost(target, layer = this.depth - 1) {
+        if(Array.isArray(target)) {
+            return this.costFunction(target, this.layers[layer].out.values);
+        }
         return this.costFunction(target.values, this.layers[layer].out.values);
     },
     backward(target, inputLayer = 0, outputLayer = this.depth - 1) {
@@ -872,9 +922,9 @@ const networkProto = {
         }
         return gradients;
     },
-    sumGradients(array, gradients) {
+    sumGradients(array, gradients, strength = 1) {
         for(let i = 0; i < gradients.length; i += 1) {
-            array[i] = (array[i] || 0) + (gradients[i] || 0);
+            array[i] = (array[i] || 0) + (gradients[i] || 0) * strength;
         }
         return array;
     },
@@ -918,17 +968,21 @@ const networkProto = {
         }
     },
 
-    Dense, RelU, LeakyRelU, Tanh, Sigmoid, Softmax, Convolution, GlobalAveragePooling, MaxPooling, AveragePooling,
+    Dense, Custom, RelU, LeakyRelU, Tanh, Sigmoid, Softmax, Convolution, GlobalAveragePooling, MaxPooling, AveragePooling,
 };
 function Network(properties) {
-    const { inputShape, costFunction, dCostFunction } = properties;
+    const { inputShape, costFunction, dCostFunction, instances = 1 } = properties;
     const network = Object.create(networkProto);
     const input = Object.create(inputProto);
     input.inShape = inputShape;
     input.outShape = inputShape;
+    input.instances = new Array(instances);
+    fillInstances(input);
+    network.instances = instances;
+    network.instance = 0;
     network.layers.push(input);
     network.costFunction = (typeof costFunction === "function") ? costFunction : costFunctions[costFunction] || costFunctions.quadratic;
-    network.dCostFunction = (typeof costFunction === "function") ? dCostFunction : dCostFunctions[costFunction] || dCostFunctions.quadratic;
+    network.dCostFunction = (typeof dCostFunction === "function") ? dCostFunction : dCostFunctions[costFunction] || dCostFunctions.quadratic;
     return network;
 }
 
